@@ -23,7 +23,8 @@ public class EngineTest {
     @Autowired
     Engine engine;
 
-    // TODO: 属性配置，停止任务, 超時，回滾，重試
+    // 已支持: 停止任务, 超時，回滾，重試
+    // TODO: 属性配置
     @Test
     public void testExecute() {
         DAG graph = new DefaultDAG();

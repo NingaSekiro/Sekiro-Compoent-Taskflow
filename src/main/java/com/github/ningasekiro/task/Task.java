@@ -13,6 +13,9 @@ public interface Task {
         return true;
     }
 
+    /**
+     * 超时时间 默认10s
+     */
     default Long getTimeout() {
         return 10L;
     }
@@ -24,7 +27,7 @@ public interface Task {
     default void callback(boolean success, Context context) {
     }
 
-    default void rollback(TaskInput input) {
+    default void rollback(Node node, Context input) {
         return;
     }
 }

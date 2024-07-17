@@ -5,8 +5,9 @@ import com.github.ningasekiro.dag.Node;
 import com.github.ningasekiro.exception.AsyncExceptionInterceptor;
 import com.github.ningasekiro.exception.AsyncExceptionInterceptorFactory;
 import com.github.ningasekiro.task.Task;
-import com.github.ningasekiro.task.TaskInput;
 import com.github.ningasekiro.threadPool.AsyncThreadPoolFactory;
+import com.github.ningasekiro.threadPool.CompletableFutureExpandUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.Message;
@@ -18,6 +19,7 @@ import java.util.concurrent.*;
 
 @Service
 @Lazy
+@Slf4j
 public class Engine {
     @Autowired
     private AsyncThreadPoolFactory asyncThreadPoolFactory;
@@ -27,7 +29,6 @@ public class Engine {
     private AsyncExceptionInterceptor asyncExceptionInterceptor;
 
     private ExecutorService executor;
-
 
     @PostConstruct
     public void init() {
@@ -55,61 +56,21 @@ public class Engine {
         }
         // 执行头节点
         List<CompletableFuture<Void>> futureList = new ArrayList<>();
-        long maxTimeout = canExecuteNodeList.stream()
-                .mapToLong(taskNode -> taskNode.getTask().getTimeout())
-                .max()
-                .getAsLong();
+        ConcurrentHashMap<CompletableFuture<Void>, String> futureNodeMap = new ConcurrentHashMap<>();
         for (Node node : canExecuteNodeList) {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 taskExecute(node, context);
             }, executor);
+            // 添加超时处理
+            future = CompletableFutureExpandUtils.orTimeout(future, node.getTask().getTimeout(), TimeUnit.SECONDS);
+            futureNodeMap.put(future, node.getTask().getTaskId());
             futureList.add(future);
             processed.add(node);
         }
-
-// 创建一个用于捕捉第一个异常的CompletableFuture
-        CompletableFuture<Void> anyException = new CompletableFuture<>();
-
-// 为每个任务添加异常处理器
-        for (CompletableFuture<Void> future : futureList) {
-            future.whenComplete((result, throwable) -> {
-                if (throwable != null) {
-                    // 如果有异常，完成anyException为异常状态
-                    if (!anyException.isDone()) {
-                        anyException.completeExceptionally(throwable);
-                    }
-                }
-            });
-        }
-
-// 直接监听anyException，它会在第一个异常出现时完成
-        anyException.whenComplete((result, exception) -> {
-            if (exception != null) {
-                // 取消所有任务
-                for (CompletableFuture<Void> future : futureList) {
-                    if (!future.isCancelled()) {
-                        future.cancel(true); // 尝试取消任务，如果任务正在运行则中断线程
-                    }
-                }
-
-                // 已执行的任务进行回滚
-                for (Node taskNode : processed) {
-                    Task task = taskNode.getTask();
-                    task.rollback(TaskInput.builder().message(context.getMessage()).taskId(taskNode.getId()).build());
-                }
-
-                // 全局异常处理
-                throw asyncExceptionInterceptor.exception(exception);
-            }
-        });
+        doHandleException(context, futureList, processed, futureNodeMap);
         try {
-            CompletableFuture.allOf(futureList.toArray(new CompletableFuture[0])).get(maxTimeout,
-                    TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        } catch (TimeoutException e) {
+            CompletableFuture.allOf(futureList.toArray(new CompletableFuture[0])).get();
+        } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
 
@@ -119,9 +80,55 @@ public class Engine {
         }
     }
 
+    private void doHandleException(Context context, List<CompletableFuture<Void>> futureList,
+                                   Set<Node> processed, Map<CompletableFuture<Void>, String> futureNodeMap) {
+
+        // 创建一个用于捕捉第一个异常的CompletableFuture
+        CompletableFuture<Void> anyExceptionFuture = new CompletableFuture<>();
+
+        // 为每个任务添加异常处理器
+        for (
+                CompletableFuture<Void> future : futureList) {
+            future.whenComplete((result, throwable) -> {
+                if (throwable != null) {
+                    // 如果有异常，完成anyException为异常状态
+                    if (!anyExceptionFuture.isDone()) {
+                        anyExceptionFuture.completeExceptionally(throwable);
+                    }
+                }
+            });
+        }
+
+        // 直接监听anyException，它会在第一个异常出现时完成
+        anyExceptionFuture.whenComplete((result, exception) ->
+
+        {
+            if (exception != null) {
+                // 取消所有任务
+                for (CompletableFuture<Void> future : futureList) {
+                    // 尝试取消任务，如果任务正在运行则中断线程
+                    log.info("before cancel nodeId:{} future isDone:{}", futureNodeMap.get(future),
+                            future.isDone());
+                    future.cancel(true);
+                    log.info("after cancel nodeId:{} future isDone:{}", futureNodeMap.get(future),
+                            future.isDone());
+                }
+                // 已执行的任务进行回滚
+                for (Node taskNode : processed) {
+                    Task task = taskNode.getTask();
+                    task.rollback(taskNode, context);
+                }
+
+                // 全局异常处理
+                throw asyncExceptionInterceptor.exception(exception);
+            }
+        });
+    }
+
     private void taskExecute(Node node, Context context) {
         Task task = node.getTask();
-        Integer retryTimes = task.getRetryTimes() != null ? task.getRetryTimes() : 0; // 默认为0次重试
+        // 默认为0次重试
+        Integer retryTimes = task.getRetryTimes() != null ? task.getRetryTimes() : 0;
         while (retryTimes >= 0) {
             try {
                 task.run(node, context);

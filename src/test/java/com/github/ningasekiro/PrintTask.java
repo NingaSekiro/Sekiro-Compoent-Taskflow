@@ -11,7 +11,7 @@ public class PrintTask implements Task {
     }
 
     @Override
-    public void run(Node node, com.github.ningasekiro.engine.Context context) {
+    public void run(Node node, Context context) {
         // LOGGER.info("Task: {}-{} Input: {} Output: {}", taskName, taskId, input.getParameters(), true);
         try {
             Thread.sleep(1000);
@@ -23,7 +23,7 @@ public class PrintTask implements Task {
                 int i = 1 / 0;
             }
             if (node.getId().equals("D")) {
-                Thread.sleep(500);
+                Thread.sleep(10000);
             }
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
