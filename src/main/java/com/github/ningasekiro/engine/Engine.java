@@ -7,18 +7,20 @@ import com.github.ningasekiro.exception.GlobalAsyncExceptionInterceptor;
 import com.github.ningasekiro.task.Task;
 import com.github.ningasekiro.threadPool.CompletableFutureExpandUtils;
 import com.github.ningasekiro.util.Singleton;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.Message;
 
 import java.util.*;
 import java.util.concurrent.*;
 
+@Setter
+@Getter
+@Slf4j
 public class Engine {
-    private static final Logger log = LoggerFactory.getLogger(Engine.class);
     private AsyncExceptionInterceptor asyncExceptionInterceptor =
             Singleton.get(GlobalAsyncExceptionInterceptor.class);
-
     private ThreadPoolExecutor threadPoolExecutor =
             (ThreadPoolExecutor) Executors.newFixedThreadPool(5);
 
@@ -43,22 +45,26 @@ public class Engine {
         }
         // 执行头节点
         List<CompletableFuture<Void>> futureList = new ArrayList<>();
-        ConcurrentHashMap<CompletableFuture<Void>, String> futureNodeMap = new ConcurrentHashMap<>();
+        ConcurrentHashMap<CompletableFuture<Void>, Task> futureTaskMap = new ConcurrentHashMap<>();
         for (Node node : canExecuteNodeList) {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 taskExecute(node, context);
             }, threadPoolExecutor);
             // 添加超时处理
             future = CompletableFutureExpandUtils.orTimeout(future, node.getTask().getTimeout(), TimeUnit.SECONDS);
-            futureNodeMap.put(future, node.getTask().getTaskId());
+            futureTaskMap.put(future, node.getTask());
             futureList.add(future);
             processed.add(node);
         }
-        doHandleException(context, futureList, processed, futureNodeMap);
+        doHandleException(context, futureList, processed, futureTaskMap);
         try {
             CompletableFuture.allOf(futureList.toArray(new CompletableFuture[0])).get();
         } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
+            // 全局异常处理
+            if (e.getCause() instanceof TimeoutException) {
+                log.error("task timeout");
+            }
+            throw asyncExceptionInterceptor.exception(e);
         }
 
         // 后序节点，递归执行
@@ -68,8 +74,8 @@ public class Engine {
     }
 
     private void doHandleException(Context context, List<CompletableFuture<Void>> futureList,
-                                   Set<Node> processed, Map<CompletableFuture<Void>, String> futureNodeMap) {
-
+                                   Set<Node> processed,
+                                   Map<CompletableFuture<Void>, Task> futureTaskMap) {
         // 创建一个用于捕捉第一个异常的CompletableFuture
         CompletableFuture<Void> anyExceptionFuture = new CompletableFuture<>();
 
@@ -88,26 +94,25 @@ public class Engine {
 
         // 直接监听anyException，它会在第一个异常出现时完成
         anyExceptionFuture.whenComplete((result, exception) ->
-
         {
             if (exception != null) {
                 // 取消所有任务
                 for (CompletableFuture<Void> future : futureList) {
                     // 尝试取消任务，如果任务正在运行则中断线程
-                    log.info("before cancel nodeId:{} future isDone:{}", futureNodeMap.get(future),
-                            future.isDone());
-                    future.cancel(true);
-                    log.info("after cancel nodeId:{} future isDone:{}", futureNodeMap.get(future),
-                            future.isDone());
+                    Task task = futureTaskMap.get(future);
+                    if (task.enableCancel()) {
+                        log.info("before cancel nodeId:{} future isDone:{}", task.getTaskId(),
+                                future.isDone());
+                        future.cancel(true);
+                        log.info("after cancel nodeId:{} future isDone:{}", task.getTaskId(),
+                                future.isDone());
+                    }
                 }
                 // 已执行的任务进行回滚
                 for (Node taskNode : processed) {
                     Task task = taskNode.getTask();
                     task.rollback(taskNode, context);
                 }
-
-                // 全局异常处理
-                throw asyncExceptionInterceptor.exception(exception);
             }
         });
     }
@@ -115,18 +120,19 @@ public class Engine {
     private void taskExecute(Node node, Context context) {
         Task task = node.getTask();
         // 默认为0次重试
-        Integer retryTimes = task.getRetryTimes() != null ? task.getRetryTimes() : 0;
+        int retryTimes = task.getRetryTimes() != null ? task.getRetryTimes() : 0;
         while (retryTimes >= 0) {
             try {
                 task.run(node, context);
-                task.callback(true, context);
+                task.callback(true,node, context);
                 return; // 成功执行后退出
             } catch (Throwable e) {
                 if (retryTimes > 0) {
                     retryTimes--; // 减少剩余重试次数
                     continue; // 重新尝试执行任务
                 } else {
-                    task.callback(false, context);
+                    retryTimes--; // 减少剩余重试次数
+                    task.callback(false,node, context);
                     if (task.isTaskInterrupt()) {
                         throw e;
                     }

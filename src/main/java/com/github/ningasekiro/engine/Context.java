@@ -27,4 +27,12 @@ public class Context {
         this.message = message;
         this.graph = graph;
     }
+
+    public Set<String> getAllNodeId() {
+        Set<String> processedIds = new HashSet<>();
+        for (Node node : processed) {
+            processedIds.add(node.getId());
+        }
+        return processedIds;
+    }
 }

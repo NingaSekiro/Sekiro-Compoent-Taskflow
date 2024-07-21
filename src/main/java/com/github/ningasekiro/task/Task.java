@@ -9,26 +9,31 @@ public interface Task {
     default String getTaskId() {
         return this.getClass().getName();
     }
+
     default boolean isTaskInterrupt() {
         return true;
     }
 
     /**
-     * 超时时间 默认10s
+     * 超时时间 默认10s,包括重试的时间
      */
     default Long getTimeout() {
         return 10L;
     }
 
     default Integer getRetryTimes() {
-        return 1;
+        return 0;
     }
 
-    default void callback(boolean success, Context context) {
+    default void callback(boolean success, Node node, Context context) {
     }
 
     default void rollback(Node node, Context input) {
         return;
+    }
+
+    default boolean enableCancel() {
+        return false;
     }
 }
 
