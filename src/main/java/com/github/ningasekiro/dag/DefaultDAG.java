@@ -1,12 +1,14 @@
 package com.github.ningasekiro.dag;
 
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
-@Slf4j
+
 public class DefaultDAG implements DAG {
+    private static final Logger log = LoggerFactory.getLogger(DefaultDAG.class);
 
     private final Set<Node> nodes = new HashSet<>();
     private final String id;
@@ -56,7 +58,7 @@ public class DefaultDAG implements DAG {
         visited.put(root.getId(), root);
         for (Node child : root.getChildren()) {
             if (visited.containsKey(child.getId())) {
-                log.warn("Node: {} is circled", child.getId());
+                log.error("Node: {} is circled", child.getId());
                 return false;
             }
 

@@ -1,10 +1,8 @@
 package com.github.ningasekiro.exception;
 
-import org.springframework.stereotype.Component;
 
 import java.util.concurrent.CompletionException;
 
-@Component
 public class GlobalAsyncExceptionInterceptor implements AsyncExceptionInterceptor {
 
     @Override

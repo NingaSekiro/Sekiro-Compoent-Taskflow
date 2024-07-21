@@ -3,38 +3,25 @@ package com.github.ningasekiro.engine;
 import com.github.ningasekiro.dag.DAG;
 import com.github.ningasekiro.dag.Node;
 import com.github.ningasekiro.exception.AsyncExceptionInterceptor;
-import com.github.ningasekiro.exception.AsyncExceptionInterceptorFactory;
+import com.github.ningasekiro.exception.GlobalAsyncExceptionInterceptor;
 import com.github.ningasekiro.task.Task;
-import com.github.ningasekiro.threadPool.AsyncThreadPoolFactory;
 import com.github.ningasekiro.threadPool.CompletableFutureExpandUtils;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
+import com.github.ningasekiro.util.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.messaging.Message;
-import org.springframework.stereotype.Service;
 
-import javax.annotation.PostConstruct;
 import java.util.*;
 import java.util.concurrent.*;
 
-@Service
-@Lazy
-@Slf4j
 public class Engine {
-    @Autowired
-    private AsyncThreadPoolFactory asyncThreadPoolFactory;
-    @Autowired
-    private AsyncExceptionInterceptorFactory asyncExceptionInterceptorFactory;
+    private static final Logger log = LoggerFactory.getLogger(Engine.class);
+    private AsyncExceptionInterceptor asyncExceptionInterceptor =
+            Singleton.get(GlobalAsyncExceptionInterceptor.class);
 
-    private AsyncExceptionInterceptor asyncExceptionInterceptor;
+    private ThreadPoolExecutor threadPoolExecutor =
+            (ThreadPoolExecutor) Executors.newFixedThreadPool(5);
 
-    private ExecutorService executor;
-
-    @PostConstruct
-    public void init() {
-        this.executor = asyncThreadPoolFactory.getThreadPoolExecutor();
-        this.asyncExceptionInterceptor = asyncExceptionInterceptorFactory.getGlobalAsyncExceptionInterceptor();
-    }
 
     public void execute(Message<DAG> message) {
         DAG graph = message.getPayload();
@@ -60,7 +47,7 @@ public class Engine {
         for (Node node : canExecuteNodeList) {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 taskExecute(node, context);
-            }, executor);
+            }, threadPoolExecutor);
             // 添加超时处理
             future = CompletableFutureExpandUtils.orTimeout(future, node.getTask().getTimeout(), TimeUnit.SECONDS);
             futureNodeMap.put(future, node.getTask().getTaskId());

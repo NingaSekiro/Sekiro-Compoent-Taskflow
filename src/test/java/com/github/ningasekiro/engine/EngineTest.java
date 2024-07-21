@@ -1,27 +1,19 @@
 package com.github.ningasekiro.engine;
 
-import com.github.ningasekiro.AllConfiguration;
 import com.github.ningasekiro.Context;
 import com.github.ningasekiro.dag.DAG;
 import com.github.ningasekiro.dag.DefaultDAG;
 import com.github.ningasekiro.dag.DefaultNode;
 import com.github.ningasekiro.dag.Node;
 import com.github.ningasekiro.PrintTask;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import com.github.ningasekiro.util.Singleton;
+import org.junit.jupiter.api.Test;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringRunner;
 
-@RunWith(SpringRunner.class)
-@SpringBootTest
-@ContextConfiguration(classes = {AllConfiguration.class})
+
 public class EngineTest {
-    @Autowired
-    Engine engine;
+    Engine engine = Singleton.get(Engine.class);
 
     // 已支持: 停止任务, 超時，回滾，重試
     // TODO: 属性配置
