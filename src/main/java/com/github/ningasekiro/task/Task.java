@@ -3,7 +3,9 @@ package com.github.ningasekiro.task;
 import com.github.ningasekiro.dag.Node;
 import com.github.ningasekiro.engine.Context;
 
-public interface Task {
+import java.util.concurrent.Callable;
+
+public interface Task{
     void run(Node node, Context input);
 
     default String getTaskId() {

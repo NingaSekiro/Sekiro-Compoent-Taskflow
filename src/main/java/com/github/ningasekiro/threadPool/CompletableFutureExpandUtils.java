@@ -86,4 +86,26 @@ public class CompletableFutureExpandUtils {
             }
         }
     }
+
+//    public static void main(String[] args) {
+//        new Thread(() -> {
+//            try {
+//                test();
+//            } catch (InterruptedException e) {
+//                throw new RuntimeException(e);
+//            }
+//        }).start();
+//        new Thread(() -> {
+//            try {
+//                test();
+//            } catch (InterruptedException e) {
+//                throw new RuntimeException(e);
+//            }
+//        }).start();
+//    }
+//
+//    public static void test() throws InterruptedException {
+//        Thread.sleep(20000);
+//        System.out.println("ddddd");
+//    }
 }

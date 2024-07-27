@@ -19,11 +19,11 @@ import java.util.Set;
  */
 @Data
 public class Context {
-    private Message message;
+    private Message<DAG> message;
     private DAG graph;
     private Set<Node> processed = new HashSet<>();
 
-    public Context(Message message, DAG graph) {
+    public Context(Message<DAG> message, DAG graph) {
         this.message = message;
         this.graph = graph;
     }
