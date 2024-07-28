@@ -19,24 +19,11 @@ public class TaskExceptionTest {
 
     @Test
     public void testCancelTask() {
-        DAG graph = DagConfig.getDag(new PrintExceptionCancelTask());
+        DAG graph = DagConfig.getTwoDag(new PrintExceptionCancelTask());
         Message<DAG> message =
                 MessageBuilder.withPayload(graph).setHeader("context",
                         new TestContext()).build();
-        CompletionException thrown = assertThrows(CompletionException.class, () -> {
-            engine.execute(message);
-        });
-    }
-
-    @Test
-    public void testRetryTask() {
-        DAG graph = DagConfig.getDag(new PrintRetryTask());
-        Message<DAG> message =
-                MessageBuilder.withPayload(graph).setHeader("context",
-                        new TestContext()).build();
-        CompletionException thrown = assertThrows(CompletionException.class, () -> {
-            engine.execute(message);
-        });
+        engine.execute(message);
     }
 
     @Test
@@ -45,25 +32,12 @@ public class TaskExceptionTest {
         Message<DAG> message =
                 MessageBuilder.withPayload(graph).setHeader("context",
                         new TestContext()).build();
-        CompletionException thrown = assertThrows(CompletionException.class, () -> {
-            engine.execute(message);
-        });
+        engine.execute(message);
     }
 
     @Test
     public void testRollbackTask() {
         DAG graph = DagConfig.getDag(new PrintRollbackTask());
-        Message<DAG> message =
-                MessageBuilder.withPayload(graph).setHeader("context",
-                        new TestContext()).build();
-        CompletionException thrown = assertThrows(CompletionException.class, () -> {
-            engine.execute(message);
-        });
-    }
-
-    @Test
-    public void testNotInterruptTask() {
-        DAG graph = DagConfig.getDag(new PrintNotInterruptTask());
         Message<DAG> message =
                 MessageBuilder.withPayload(graph).setHeader("context",
                         new TestContext()).build();

@@ -13,5 +13,10 @@ public class PrintTask implements Task {
         log.info("Thread: {} TaskName: {},NodeName: {},processed Node: {}",
                 Thread.currentThread().getId(),
                 TASK_NAME, node.getId(), context.getAllNodeId());
+        try {
+            Thread.sleep(10000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

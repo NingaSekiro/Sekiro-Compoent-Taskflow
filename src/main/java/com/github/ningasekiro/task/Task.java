@@ -12,19 +12,11 @@ public interface Task{
         return this.getClass().getName();
     }
 
-    default boolean isTaskInterrupt() {
-        return true;
-    }
-
     /**
-     * 超时时间 默认10s,包括重试的时间
+     * 超时时间 默认24h
      */
     default Long getTimeout() {
-        return 10L;
-    }
-
-    default Integer getRetryTimes() {
-        return 0;
+        return 24*60*60L;
     }
 
     default void callback(boolean success, Node node, Context context) {

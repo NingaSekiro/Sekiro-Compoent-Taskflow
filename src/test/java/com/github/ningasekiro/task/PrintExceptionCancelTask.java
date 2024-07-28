@@ -20,6 +20,7 @@ public class PrintExceptionCancelTask implements Task {
             }
             if (node.getId().equals("D")) {
                 Thread.sleep(1000);
+                log.info("finishing");
             }
         } catch (InterruptedException e) {
             log.error("canceled");
