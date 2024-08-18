@@ -2,23 +2,26 @@ package com.github.ningasekiro.engine;
 
 import com.github.ningasekiro.dag.DAG;
 import com.github.ningasekiro.dag.Node;
-import com.google.common.util.concurrent.*;
+import io.netty.channel.DefaultEventLoop;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.FutureListener;
+import io.netty.util.concurrent.Promise;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.Message;
 
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.*;
 
 @Setter
 @Getter
 @Slf4j
 public class Engine {
-    private final ListeningExecutorService listeningExecutorService =
-            MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(5));
+    private final EventLoopGroup eventLoopGroup = new NioEventLoopGroup(10);
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(1);
 
@@ -41,50 +44,69 @@ public class Engine {
     }
 
     private void scheduleNode(Node node, Context context,
-                              Map<Node, ListenableFuture<Void>> futures) {
-        DAG graph = context.getMessage().getPayload();
-        if (futures.keySet().containsAll(node.getParents())) {
-            // No dependencies, start immediately
-            log.info("Thread: {},node:{},success", Thread.currentThread().getId(), node.getId());
-            ListenableFuture<Void> future = listeningExecutorService.submit(() -> {
-                node.getTask().run(node, context);
+                              Map<Node, Promise<Void>> futures) {
+        if (futures.keySet().containsAll(node.getParents())&&isParentsDone(futures, node.getParents())) {
+            log.info("Thread: {}, node: {}, success", Thread.currentThread().getId(), node.getId());
+            Promise<Void> promise = eventLoopGroup.next().newPromise();
+            Future<Void> future = eventLoopGroup.submit(() -> {
+                try {
+                    node.getTask().run(node, context);
+                    promise.setSuccess(null);
+                } catch (Exception e) {
+                    promise.setFailure(e);
+                }
                 return null;
             });
-            futures.put(node, future);
-            // 超時
-            future = Futures.withTimeout(future, Duration.ofSeconds(node.getTask().getTimeout()), scheduledExecutorService);
-            addListener(node, future, futures, context);
+            futures.put(node, promise);
+            // 使用统一的超时处理机制
+            scheduleTimeout(node, promise, future);
+            addListener(node, promise, futures, context);
         } else {
             return;
         }
     }
 
-    private void addListener(Node node, ListenableFuture<Void> future, Map<Node,
-            ListenableFuture<Void>> futures, Context context) {
-        Futures.addCallback(future, new FutureCallback<Void>() {
-            @Override
-            public void onSuccess(Void result) {
+    private void scheduleTimeout(Node node, Promise<Void> promise, Future<Void> future) {
+        scheduledExecutorService.schedule(() -> {
+            if (!promise.isDone()) {
+                log.info("Thread: {}, node: {}, timeout", Thread.currentThread().getId(), node.getId());
+                promise.tryFailure(new TimeoutException("Task timed out for node: " + node.getId()));
+            }
+        }, node.getTask().getTimeout(), TimeUnit.SECONDS);
+    }
+
+    private void addListener(Node node, Promise<Void> promise, Map<Node, Promise<Void>> futures,
+                             Context context) {
+        promise.addListener((FutureListener<Void>) f -> {
+            if (f.isSuccess()) {
                 node.getTask().callback(true, node, context);
                 for (Node child : node.getChildren()) {
                     if (!futures.containsKey(child)) {
                         scheduleNode(child, context, futures);
                     }
                 }
-            }
-
-            @Override
-            public void onFailure(Throwable t) {
+            } else {
+                Throwable cause = f.cause();
                 node.getTask().callback(false, node, context);
-                //rollback+cancel
-                for (Map.Entry<Node, ListenableFuture<Void>> nodeListenableFutureEntry : context.getNodeFutureHashMap().entrySet()) {
-                    Node key = nodeListenableFutureEntry.getKey();
+                // Rollback + Cancel
+                for (Map.Entry<Node, Promise<Void>> nodeFutureEntry : context.getNodeFutureHashMap().entrySet()) {
+                    Node key = nodeFutureEntry.getKey();
                     key.getTask().rollback(key, context);
                     if (node.getTask().enableCancel()) {
-                        nodeListenableFutureEntry.getValue().cancel(true);
+                        nodeFutureEntry.getValue().cancel(true);
                     }
                 }
-                log.info("Thread: {},Task failed for node {}: {}", Thread.currentThread().getId(), node.getId(), t.getMessage());
+                log.error("Thread: {}, Task failed for node {}: {}", Thread.currentThread().getId(), node.getId(), cause.getMessage());
             }
-        }, MoreExecutors.directExecutor());
+        });
+    }
+
+    private boolean isParentsDone(Map<Node, Promise<Void>> futures, Set<Node> parents) {
+        for (Node parent : parents) {
+            if (!futures.get(parent).isDone()) {
+                return false;
+            }
+        }
+        return true;
     }
 }

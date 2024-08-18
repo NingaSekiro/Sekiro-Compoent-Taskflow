@@ -14,10 +14,10 @@ public class PrintTimeOutTask implements Task {
                 Thread.currentThread().getId(),
                 TASK_NAME, node.getId(), context.getAllNodeId());
         try {
-            Thread.sleep(2000);
-            if (node.getId().equals("B")) {
-                int i = 1 / 0;
-            }
+            Thread.sleep(1000);
+//            if (node.getId().equals("B")) {
+//                int i = 1 / 0;
+//            }
             if (node.getId().equals("D")) {
                 Thread.sleep(100000000);
             }

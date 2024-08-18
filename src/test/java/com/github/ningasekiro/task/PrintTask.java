@@ -14,7 +14,7 @@ public class PrintTask implements Task {
                 Thread.currentThread().getId(),
                 TASK_NAME, node.getId(), context.getAllNodeId());
         try {
-            Thread.sleep(10000);
+            Thread.sleep(1000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

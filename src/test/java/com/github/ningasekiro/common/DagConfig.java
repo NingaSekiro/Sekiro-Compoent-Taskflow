@@ -17,6 +17,7 @@ public class DagConfig {
         Node nodeE = new DefaultNode("E", task);
         Node nodeF = new DefaultNode("F", task);
 
+        // A -> B -> C -> E -> F, A -> D -> E -> F
         graph.addEdge(nodeA, nodeB);
         graph.addEdge(nodeB, nodeC);
         graph.addEdge(nodeC, nodeE);
